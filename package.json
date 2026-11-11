@@ -1,0 +1,13 @@
+{
+  "name": "caramelo-bot-robux",
+  "version": "2.0.0",
+  "description": "Bot Discord de vendas com Game Pass individual e comprovante em vídeo",
+  "main": "src/index.js",
+  "scripts": { "start": "node src/index.js", "register": "node src/register-commands.js" },
+  "engines": { "node": ">=20.0.0" },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.4.7"
+  }
+}
