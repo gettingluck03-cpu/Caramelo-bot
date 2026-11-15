@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signed() { return request.auth != null; }
+    function isOwner() {
+      return signed()
+        && request.auth.token.email == 'henriquee3404@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+    function isAdmin() {
+      return isOwner()
+        || (signed() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+    function storeOpen() {
+      return exists(/databases/$(database)/documents/settings/store)
+        && get(/databases/$(database)/documents/settings/store).data.open == true;
+    }
+
+    // Catálogo e configurações: qualquer usuário logado lê, só admin escreve
+    match /products/{id}      { allow read: if signed(); allow write: if isAdmin(); }
+    match /productMedia/{id}  { allow read: if signed(); allow write: if isAdmin(); }
+    match /categories/{id}    { allow read: if signed(); allow write: if isAdmin(); }
+    match /settings/{id}      { allow read: if signed(); allow write: if isAdmin(); }
+    match /pixKeys/{id}       { allow read: if signed(); allow write: if isAdmin(); }
+    match /fulfil/{id}        { allow read: if signed(); allow write: if isAdmin(); }
+
+    // Administradores: só o dono (email principal) gerencia
+    match /admins/{id} { allow read: if signed(); allow write: if isOwner(); }
+
+    // Auditoria e controle interno: só admin
+    match /logs/{id}            { allow read, write: if isAdmin(); }
+    match /stockMovements/{id}  { allow read, write: if isAdmin(); }
+    match /leases/{id}          { allow read, write: if isAdmin(); }
+
+    // Perfis: todos leem, cada um edita o próprio
+    match /profiles/{uid} {
+      allow read: if signed();
+      allow create, update: if signed() && request.auth.uid == uid;
+      allow delete: if isAdmin();
+    }
+
+    // Carrinho privado
+    match /data/users/{uid}/{rest=**} {
+      allow read, write: if signed() && request.auth.uid == uid;
+    }
+
+    // Pedidos e chats: dono do pedido e admins
+    match /orders/{uid}/list/{oid} {
+      allow read: if signed() && (request.auth.uid == uid || isAdmin());
+      allow create: if signed() && request.auth.uid == uid
+        && storeOpen()
+        && request.resource.data.uid == uid
+        && request.resource.data.method == 'PIX'
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 50;
+      allow update: if isAdmin()
+        || (signed() && request.auth.uid == uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['lastMsg','lastAt','lastFrom','proofSent','proofAt']));
+      allow delete: if isAdmin();
+
+      match /msgs/{mid} {
+        allow read: if signed() && (request.auth.uid == uid || isAdmin());
+        allow create: if isAdmin()
+          || (signed() && request.auth.uid == uid
+              && ((mid == 'welcome' && request.resource.data.from == 'bot' && request.resource.data.type == 'text')
+                  || (request.resource.data.from == 'user'
+                      && request.resource.data.uid == request.auth.uid
+                      && request.resource.data.type in ['text','image','audio'])));
+        allow update, delete: if isAdmin();
+      }
+    }
+  }
+}
